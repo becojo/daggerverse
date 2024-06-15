@@ -2,69 +2,141 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"dagger/processing/internal/dagger"
+	"embed"
+	"encoding/json"
+	"strconv"
 )
 
-type Processing struct{}
+type Processing struct {
+}
 
-var defaultImage = "ghcr.io/becojo/processing:main@sha256:de8ecf1db356463607b3854a576d7a9679fbbbb523e8c5f8a6ab99550529da11"
+type Render struct {
+	Container *Container
+}
 
-func (m *Processing) Render(
-	ctx context.Context,
-	image Optional[string],
-	sketch string,
-	width string,
-	height string,
-	seed string,
-) *Container {
-	_image := image.GetOr(defaultImage)
+type Gif struct {
+	File *File
+}
 
-	sketches := dag.Host().Directory("sketches", HostDirectoryOpts{
-		Exclude: []string{"*.png", "*.gif"},
-	})
+type Video struct {
+	File *File
+}
 
-	cwd := fmt.Sprintf("/sketches/%s", sketch)
+type Config struct {
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Renderer string `json:"renderer"`
+}
 
-	return dag.Container().From(_image).
+const processingImage = "ghcr.io/becojo/processing:main@sha256:e708d5f3dbad8bb7d0cefe6a1d00d8077ad512f362b7d9175fccb829ea848508"
+
+//go:embed template
+var template embed.FS
+
+func FsFiles(fs embed.FS) dagger.WithDirectoryFunc {
+	return func(dir *dagger.Directory) *dagger.Directory {
+		files, _ := fs.ReadDir("template")
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			content, _ := fs.ReadFile("template/" + file.Name())
+			dir = dir.WithNewFile("sketch/"+file.Name(), string(content))
+		}
+		return dir
+	}
+}
+
+// Directory with a new Processing sketch
+func (m *Processing) New(ctx context.Context) *Directory {
+	return dag.Directory().With(FsFiles(template))
+}
+
+func (m *Processing) Render(ctx context.Context,
+	sketch *Directory,
+	//+optional
+	seed int,
+) (*Render, error) {
+	var config Config
+	configJson, err := sketch.File("sketch/config.json").Contents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal([]byte(configJson), &config)
+	if err != nil {
+		return nil, err
+	}
+
+	ctr := dag.Container().From(processingImage).
 		WithEnvVariable("RECORD", "1").
-		WithEnvVariable("WIDTH", width).
-		WithEnvVariable("HEIGHT", height).
-		WithEnvVariable("SEED", seed).
-		WithDirectory("/sketches", sketches).
-		WithWorkdir(cwd).
+		WithEnvVariable("WIDTH", strconv.Itoa(config.Width)).
+		WithEnvVariable("HEIGHT", strconv.Itoa(config.Height)).
+		WithEnvVariable("RENDERER", config.Renderer).
+		WithEnvVariable("SEED", strconv.Itoa(seed)).
+		WithDirectory("/src", sketch).
+		WithWorkdir("/src").
 		WithExec([]string{
-			"xvfb-run", "/processing/processing-java",
-			fmt.Sprintf("--sketch=%v", cwd), "--run",
+			"xvfb-run",
+			"/processing/processing-java",
+			`--sketch=/src/sketch`,
+			"--run",
 		})
+
+	return &Render{
+		Container: ctr,
+	}, nil
 }
 
-func (m *Processing) Ffmpeg(
-	ctx context.Context,
-	image Optional[string],
-	sketch string,
-	width string,
-	height string,
-	seed string,
-	loops Optional[int],
-) *File {
-	c := m.Render(ctx, image, sketch, width, height, seed)
+func (r *Render) Gif() *Gif {
+	script := `convert -delay 3 -loop 0 sketch/*.png output.gif`
+	ctr := r.Container.WithExec([]string{"bash", "-ec", script})
 
-	return c.WithExec([]string{"bash", "-ec", `
-      start_number=$(ls -1 *.png | sed 's/frame-//g;s/.png//g' | sort -n | head -n1)
-      ffmpeg -stream_loop 1 -r 30 -f image2 -start_number "$start_number" -i 'frame-%08d.png' -vcodec libx264 -crf 25 -pix_fmt yuv420p output.mp4
-    `}).File("output.mp4")
+	return &Gif{File: ctr.File("output.gif")}
 }
 
-func (m *Processing) Gif(
-	ctx context.Context,
-	image Optional[string],
-	sketch string,
-	width string,
-	height string,
-	seed string,
-) *File {
-	c := m.Render(ctx, image, sketch, width, height, seed)
+func (r *Render) Video(
+	//+optional
+	loops string,
+) *Video {
+	if loops == "" {
+		loops = "2"
+	}
 
-	return c.WithExec([]string{"convert", "-delay", "3", "-loop", "0", "*.png", "output.gif"}).
-		File("output.gif")
+	script := `
+start_number=$(ls -1 *.png | sed 's/frame-//g;s/.png//g' | sort -n | head -n1)
+ffmpeg -stream_loop ${LOOPS} -r 30 -f image2 -start_number "$start_number" -i 'frame-%08d.png' -vcodec libx264 -crf 25 -pix_fmt yuv420p output.mp4
+`
+	ctr := r.Container.
+		WithWorkdir("/src/sketch").
+		WithEnvVariable("LOOPS", loops).
+		WithExec([]string{"bash", "-ec", script})
+
+	return &Video{File: ctr.File("output.mp4")}
+}
+
+func (g *Gif) Gifsicle(
+	//+optional
+	colors string,
+	//+optional
+	transparent string,
+) *Gif {
+	args := []string{"gifsicle", "-o", "output.gif"}
+
+	if colors != "" {
+		args = append(args, "--colors="+colors)
+	}
+
+	if transparent != "" {
+		args = append(args, "--transparent="+transparent, "--disposal=previous")
+	}
+
+	args = append(args, "input.gif")
+
+	return &Gif{
+		File: dag.Container().
+			From(processingImage).
+			WithFile("input.gif", g.File).
+			WithExec(args).File("output.gif"),
+	}
 }
