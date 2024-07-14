@@ -49,10 +49,15 @@ func FsFiles(fs embed.FS, basedir string) dagger.WithDirectoryFunc {
 }
 
 // Directory with a new Processing sketch
+//
+// Usage: dagger call new export --path /tmp/sketch
 func (m *Processing) New(ctx context.Context) *dagger.Directory {
 	return dag.Directory().With(FsFiles(template, "sketch"))
 }
 
+// Render a sketch into frames
+//
+// Usage: dagger call render --sketch /tmp/sketch
 func (m *Processing) Render(ctx context.Context,
 	sketch *dagger.Directory,
 	//+optional
@@ -88,6 +93,9 @@ func (m *Processing) Render(ctx context.Context,
 	}, nil
 }
 
+// Convert rendered frames into a GIF
+//
+// Usage: dagger call render --sketch /tmp/sketch gif file export --path output.gif
 func (r *Render) Gif() *Gif {
 	script := `convert -delay 3 -loop 0 sketch/*.png output.gif`
 	ctr := r.Container.WithExec([]string{"bash", "-ec", script})
@@ -95,6 +103,9 @@ func (r *Render) Gif() *Gif {
 	return &Gif{File: ctr.File("output.gif")}
 }
 
+// Convert rendered frames into a MP4 video
+//
+// Usage: dagger call render --sketch /tmp/sketch video file export --path output.mp4
 func (r *Render) Video(
 	//+optional
 	loops string,
@@ -115,6 +126,9 @@ ffmpeg -stream_loop ${LOOPS} -r 30 -f image2 -start_number "$start_number" -i 'f
 	return &Video{File: ctr.File("output.mp4")}
 }
 
+// Optimized a GIF using Gifsicle
+//
+// Usage: dagger call render --sketch /tmp/sketch gif gifsicle --colors 32 file export --path output.gif
 func (g *Gif) Gifsicle(
 	//+optional
 	colors string,
