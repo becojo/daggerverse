@@ -12,15 +12,15 @@ type Processing struct {
 }
 
 type Render struct {
-	Container *Container
+	Container *dagger.Container
 }
 
 type Gif struct {
-	File *File
+	File *dagger.File
 }
 
 type Video struct {
-	File *File
+	File *dagger.File
 }
 
 type Config struct {
@@ -34,7 +34,7 @@ const processingImage = "ghcr.io/becojo/processing:main@sha256:e708d5f3dbad8bb7d
 //go:embed template
 var template embed.FS
 
-func FsFiles(fs embed.FS) dagger.WithDirectoryFunc {
+func FsFiles(fs embed.FS, basedir string) dagger.WithDirectoryFunc {
 	return func(dir *dagger.Directory) *dagger.Directory {
 		files, _ := fs.ReadDir("template")
 		for _, file := range files {
@@ -49,12 +49,12 @@ func FsFiles(fs embed.FS) dagger.WithDirectoryFunc {
 }
 
 // Directory with a new Processing sketch
-func (m *Processing) New(ctx context.Context) *Directory {
-	return dag.Directory().With(FsFiles(template))
+func (m *Processing) New(ctx context.Context) *dagger.Directory {
+	return dag.Directory().With(FsFiles(template, "sketch"))
 }
 
 func (m *Processing) Render(ctx context.Context,
-	sketch *Directory,
+	sketch *dagger.Directory,
 	//+optional
 	seed int,
 ) (*Render, error) {
