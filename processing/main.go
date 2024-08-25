@@ -106,7 +106,7 @@ func (m *Processing) Render(ctx context.Context,
 //
 // Usage: dagger call render --sketch /tmp/sketch gif file export --path output.gif
 func (r *Render) Gif() *Gif {
-	script := `convert -delay 3 -loop 0 sketch/*.png output.gif`
+	script := `convert -delay 3 -loop 0 sketch/frame-*.png output.gif`
 	ctr := r.Container.WithExec([]string{"bash", "-ec", script})
 
 	return &Gif{File: ctr.File("output.gif")}
