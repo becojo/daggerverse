@@ -41,10 +41,14 @@ func FsFiles(fs embed.FS, basedir string) dagger.WithDirectoryFunc {
 			if file.IsDir() {
 				continue
 			}
+			if file.Name() == "Makefile" {
+				continue
+			}
 			content, _ := fs.ReadFile("template/" + file.Name())
 			dir = dir.WithNewFile("sketch/"+file.Name(), string(content))
 		}
-		return dir
+		makefile, _ := fs.ReadFile("template/Makefile")
+		return dir.WithNewFile("Makefile", string(makefile))
 	}
 }
 
