@@ -1,82 +1,47 @@
 boolean record = false;
 int seed = 0;
-boolean preload = false;
 
-String renderer() {
-    String RENDERER = System.getenv("RENDERER");
+String getSetting(String key, String defaultValue) {
+    String value = System.getenv(key);
 
-    if(RENDERER == null) {
-        return P2D;
-    }
-
-    if(RENDERER.equals("P3D")) {
-        return P3D;
+    if(value == null || value.equals("")) {
+        return defaultValue;
     } else {
-        return P2D;
+        return value;
     }
 }
 
 void settings() {
     println("settings");
 
-    String WIDTH = System.getenv("WIDTH");
-    String HEIGHT = System.getenv("HEIGHT");
+    String WIDTH = getSetting("WIDTH", "500");
+    String HEIGHT = getSetting("HEIGHT", "500");
+    String SEED = getSetting("SEED", "0");
+    String RENDERER = P2D;
 
-    if(WIDTH == null || HEIGHT == null) {
-        size(500, 500, renderer());
-        println("size: 500x500");
-    } else {
-        size(int(WIDTH), int(HEIGHT), renderer());
-        println("size: ", WIDTH, HEIGHT);
-    }
-    if(System.getenv("SEED") != null) {
-        seed = int(System.getenv("SEED"));
-        _setSeed(seed);
-    } else {
-        _setSeed(0);
+    if(getSetting("RENDERER", "P2D").equals("P3D")) {
+        RENDERER = P3D;
     }
 
-    if(System.getenv("RECORD") != null){
+    size(int(WIDTH), int(HEIGHT), RENDERER);
+    println("size: ", WIDTH, "x", HEIGHT);
+
+    _setSeed(int(SEED));
+
+    if(System.getenv("RECORD") != null) {
         println("recording: true");
         record = true;
     }
 }
 
 void draw() {
-    float r = frameCount / speed;
+    float r = (float(frameCount - 1) / frames) * period;
     render(r);
-    _save(r);
+    _record(r);
+    _ui();
 }
 
-void _save(float r) {
-    if(record && !preload) {
-        int progress = int(map(r, 0, TWO_PI, 0, 100));
-        if(progress % 5 == 0) {
-            print("\rprogress:", progress, "%");
-        }
-
-        saveFrame("frame-########.png");
-    }
-
-    if(record && r > TWO_PI && !preload) {
-        exit();
-        return;
-    }
-
-    if(record && r > TWO_PI && preload) {
-        if(r > TWO_PI * 2) {
-             exit();
-             return;
-        }
-
-        int progress = int(map(r, TWO_PI, TWO_PI*2, 0, 100));
-        if(progress % 5 == 0) {
-            print("\rprogress:", progress, "%");
-        }
-
-        saveFrame("frame-########.png");
-    }
-
+void _ui() {
     if(keyPressed && key == 'q') {
         exit();
     }
@@ -86,6 +51,33 @@ void _save(float r) {
     }
 }
 
+void _record(float r) {
+    if(!record) {  
+        return; 
+    }
+
+    int start = 0;
+    int end = frames;
+
+    if(preload) {
+        start = frames + 1;
+        end = frames * 2;
+    }
+
+    if(frameCount >= start) {
+        int progress = int(map(frameCount, start, end, 0, 100));
+        if(progress % 5 == 0) {
+            print("\rprogress:", progress, "%");
+        }
+
+        saveFrame("frame-########.png");
+    }
+
+    if(frameCount >= end) {
+        exit();
+        return;
+    }
+}
 
 void _setSeed(int s) {
     if (s == 0) {
@@ -94,9 +86,8 @@ void _setSeed(int s) {
         seed = s;
     }
 
+    println("seed: ", seed);
     noiseSeed(seed);
     randomSeed(seed);
     frameCount = 0;
-
-    println("seed: ", seed);
 }

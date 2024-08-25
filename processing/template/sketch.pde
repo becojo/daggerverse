@@ -1,8 +1,11 @@
-float speed = 10.0;
+///////////////////////////////////////////////////////////////////////////////////
+int frames = 30;           // number of frames per period
+float period = TWO_PI;     // period of the animation
+boolean preload = false;   // run the sketch for 1 period before starting to record
+///////////////////////////////////////////////////////////////////////////////////
 
 void setup() {
     print("setup");
-    noFill();
 }
 
 void render(float r) {
@@ -12,5 +15,5 @@ void render(float r) {
 
     stroke(255);
     fill(255, 0, 0);
-    rect(cos(r)*width*0.25, sin(r)*width*0.25, 50, 50);
+    ellipse(cos(r)*width*0.25, sin(r)*width*0.25, 50, 50);
 }
