@@ -1,6 +1,9 @@
 MODULE ?= github.com/becojo/daggerverse/processing
 SKETCH ?= $(PWD):sketch
 
+run:
+	processing-java --sketch=$(PWD)/sketch --run
+
 render:
 	dagger call -m "$(MODULE)" render --sketch "$(SKETCH)"
 
