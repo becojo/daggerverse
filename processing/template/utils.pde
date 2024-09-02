@@ -64,6 +64,8 @@ void _record(float r) {
         end = frames * 2;
     }
 
+    end += (periods - 1) * frames;
+
     if(frameCount >= start) {
         int progress = int(map(frameCount, start, end, 0, 100));
         if(progress % 5 == 0) {

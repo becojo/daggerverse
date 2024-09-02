@@ -2,6 +2,7 @@
 int frames = 30;           // number of frames per period
 float period = TWO_PI;     // period of the animation
 boolean preload = false;   // run the sketch for 1 period before starting to record
+int periods = 1;           // number of periods to record
 ///////////////////////////////////////////////////////////////////////////////////
 
 void setup() {
