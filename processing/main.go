@@ -143,6 +143,10 @@ func (g *Gif) Gifsicle(
 	colors string,
 	//+optional
 	transparent string,
+	//+optional
+	lossy bool,
+	//+optional
+	optimize bool,
 ) *Gif {
 	args := []string{"gifsicle", "-o", "output.gif"}
 
@@ -152,6 +156,14 @@ func (g *Gif) Gifsicle(
 
 	if transparent != "" {
 		args = append(args, "--transparent="+transparent, "--disposal=previous")
+	}
+
+	if lossy {
+		args = append(args, "--lossy")
+	}
+
+	if optimize {
+		args = append(args, "--optimize")
 	}
 
 	args = append(args, "input.gif")
