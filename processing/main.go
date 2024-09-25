@@ -60,7 +60,8 @@ func (m *Processing) New(ctx context.Context) *dagger.Directory {
 }
 
 func (m *Processing) Container(ctx context.Context, sketch *dagger.Directory) *dagger.Container {
-	return dag.Container().From(processingImage).
+	return dag.Container().
+		From(processingImage).
 		WithDirectory("/src", sketch)
 }
 
@@ -97,9 +98,7 @@ func (m *Processing) Render(ctx context.Context,
 			"--run",
 		})
 
-	return &Render{
-		Container: ctr,
-	}, nil
+	return &Render{Container: ctr}, nil
 }
 
 // Convert rendered frames into a GIF
@@ -172,6 +171,7 @@ func (g *Gif) Gifsicle(
 		File: dag.Container().
 			From(processingImage).
 			WithFile("input.gif", g.File).
-			WithExec(args).File("output.gif"),
+			WithExec(args).
+			File("output.gif"),
 	}
 }

@@ -94,6 +94,10 @@ void _setSeed(int s) {
     frameCount = 0;
 }
 
+void outputFrame() {
+  saveFrame(String.format("output/frame_%dx%d_%s.png", width, height, seed));
+}
+
 // https://github.com/sighack/easing-functions/blob/1016fc1ff73d293959c90e4ce545017e36b869b6/code/easing/easing.pde
 // MIT License Copyright (c) 2018 sighack
 
