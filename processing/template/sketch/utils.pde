@@ -1,5 +1,11 @@
+// If the the sketch is being recorded
 boolean record = false;
+
+// The random seed used for noise() and random()
 int seed = 0;
+
+// Number of periods to run
+int _periods = 0;
 
 String getSetting(String key, String defaultValue) {
     String value = System.getenv(key);
@@ -17,13 +23,10 @@ void settings() {
     String WIDTH = getSetting("WIDTH", "500");
     String HEIGHT = getSetting("HEIGHT", "500");
     String SEED = getSetting("SEED", "0");
-    String RENDERER = P2D;
 
-    if(getSetting("RENDERER", "P2D").equals("P3D")) {
-        RENDERER = P3D;
-    }
+    _periods = int(getSetting("PERIODS", "0"));
 
-    size(int(WIDTH), int(HEIGHT), RENDERER);
+    size(int(WIDTH), int(HEIGHT), mode);
     println("size: ", WIDTH, "x", HEIGHT);
 
     _setSeed(int(SEED));
@@ -32,13 +35,22 @@ void settings() {
         println("recording: true");
         record = true;
     }
+
+    if (_periods > 0) {
+      println("periods: ", _periods);
+    }
 }
 
 void draw() {
-    float r = (float(frameCount - 1) / frames) * period;
+    float p = float(frameCount - 1) / frames;
+    float r = p * period;
     render(r);
     _record(r);
     _ui();
+
+    if(!record && _periods > 0 && int(p) >= _periods) {
+      exit();
+    }
 }
 
 void _ui() {
@@ -52,8 +64,8 @@ void _ui() {
 }
 
 void _record(float r) {
-    if(!record) {  
-        return; 
+    if(!record) {
+        return;
     }
 
     int start = 0;
@@ -64,15 +76,17 @@ void _record(float r) {
         end = frames * 2;
     }
 
-    end += (periods - 1) * frames;
+    end += (_periods - 1) * frames;
 
     if(frameCount >= start) {
         int progress = int(map(frameCount, start, end, 0, 100));
         if(progress % 5 == 0) {
-            print("\rprogress:", progress, "%");
+            print("\rprogress:", progress, "% ");
         }
 
-        saveFrame("frame-########.png");
+        if(record) {
+          saveFrame("frame-########.png");
+        }
     }
 
     if(frameCount >= end) {

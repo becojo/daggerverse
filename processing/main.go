@@ -4,7 +4,8 @@ import (
 	"context"
 	"dagger/processing/internal/dagger"
 	"embed"
-	"encoding/json"
+	"io/fs"
+	"os"
 	"strconv"
 )
 
@@ -23,40 +24,33 @@ type Video struct {
 	File *dagger.File
 }
 
-type Config struct {
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	Renderer string `json:"renderer"`
-}
-
 const processingImage = "ghcr.io/becojo/processing:main@sha256:e708d5f3dbad8bb7d0cefe6a1d00d8077ad512f362b7d9175fccb829ea848508"
 
-//go:embed template
+//go:embed all:template
 var template embed.FS
 
-func FsFiles(fs embed.FS, basedir string) dagger.WithDirectoryFunc {
+func fsFiles(src embed.FS, basedir string) dagger.WithDirectoryFunc {
 	return func(dir *dagger.Directory) *dagger.Directory {
-		files, _ := fs.ReadDir("template")
-		for _, file := range files {
-			if file.IsDir() {
-				continue
+		fs.WalkDir(src, ".", func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
 			}
-			if file.Name() == "Makefile" {
-				continue
+			content, err := fs.ReadFile(src, path)
+			if err != nil {
+				return err
 			}
-			content, _ := fs.ReadFile("template/" + file.Name())
-			dir = dir.WithNewFile("sketch/"+file.Name(), string(content))
-		}
-		makefile, _ := fs.ReadFile("template/Makefile")
-		return dir.WithNewFile("Makefile", string(makefile))
+			dir = dir.WithNewFile(path, string(content))
+			return nil
+		})
+		return dir.Directory(basedir)
 	}
 }
 
 // Directory with a new Processing sketch
 //
 // Usage: dagger call new export --path /tmp/sketch
-func (m *Processing) New(ctx context.Context) *dagger.Directory {
-	return dag.Directory().With(FsFiles(template, "sketch"))
+func (m *Processing) New() *dagger.Directory {
+	return dag.Directory().With(fsFiles(template, "template"))
 }
 
 func (m *Processing) Container(ctx context.Context, sketch *dagger.Directory) *dagger.Container {
@@ -66,28 +60,20 @@ func (m *Processing) Container(ctx context.Context, sketch *dagger.Directory) *d
 }
 
 // Render a sketch into frames
-//
-// Usage: dagger call render --sketch /tmp/sketch
 func (m *Processing) Render(ctx context.Context,
+	// +ignore=["*", "!sketch/**"]
 	sketch *dagger.Directory,
 	//+optional
 	seed int,
+	//+default=500
+	width int,
+	//+default=500
+	height int,
 ) (*Render, error) {
-	var config Config
-	configJson, err := sketch.File("sketch/config.json").Contents(ctx)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal([]byte(configJson), &config)
-	if err != nil {
-		return nil, err
-	}
-
 	ctr := dag.Container().From(processingImage).
 		WithEnvVariable("RECORD", "1").
-		WithEnvVariable("WIDTH", strconv.Itoa(config.Width)).
-		WithEnvVariable("HEIGHT", strconv.Itoa(config.Height)).
-		WithEnvVariable("RENDERER", config.Renderer).
+		WithEnvVariable("WIDTH", strconv.Itoa(width)).
+		WithEnvVariable("HEIGHT", strconv.Itoa(height)).
 		WithEnvVariable("SEED", strconv.Itoa(seed)).
 		WithDirectory("/src", sketch).
 		WithWorkdir("/src").
@@ -104,9 +90,18 @@ func (m *Processing) Render(ctx context.Context,
 // Convert rendered frames into a GIF
 //
 // Usage: dagger call render --sketch /tmp/sketch gif file export --path output.gif
-func (r *Render) Gif() *Gif {
-	script := `convert -delay 3 -loop 0 sketch/frame-*.png output.gif`
-	ctr := r.Container.WithExec([]string{"bash", "-ec", script})
+func (r *Render) Gif(
+	//+default=25
+	fps int,
+) *Gif {
+	script := `
+start_number=$(ls -1 sketch/*.png | sed 's/.*frame-//g;s/.png//g' | sort -n | head -n1)
+ffmpeg -r ${FPS} -f image2 -start_number "$start_number" -i 'sketch/frame-%08d.png' -vf palettegen palette.png
+ffmpeg -r ${FPS} -f image2 -start_number "$start_number" -i 'sketch/frame-%08d.png' -i palette.png -lavfi paletteuse output.gif
+`
+	ctr := r.Container.
+		WithEnvVariable("FPS", strconv.Itoa(fps)).
+		WithExec([]string{"bash", "-ec", script})
 
 	return &Gif{File: ctr.File("output.gif")}
 }
@@ -115,26 +110,25 @@ func (r *Render) Gif() *Gif {
 //
 // Usage: dagger call render --sketch /tmp/sketch video file export --path output.mp4
 func (r *Render) Video(
-	//+optional
-	loops string,
+	//+default=2
+	loops int,
+	//+default=25
+	fps int,
 ) *Video {
-	if loops == "" {
-		loops = "2"
-	}
-
 	script := `
 start_number=$(ls -1 *.png | sed 's/frame-//g;s/.png//g' | sort -n | head -n1)
-ffmpeg -stream_loop ${LOOPS} -r 30 -f image2 -start_number "$start_number" -i 'frame-%08d.png' -vcodec libx264 -crf 25 -pix_fmt yuv420p output.mp4
+ffmpeg -stream_loop ${LOOPS} -r ${FPS} -f image2 -start_number "$start_number" -i 'frame-%08d.png' -vcodec libx264 -crf 25 -pix_fmt yuv420p output.mp4
 `
 	ctr := r.Container.
 		WithWorkdir("/src/sketch").
-		WithEnvVariable("LOOPS", loops).
+		WithEnvVariable("LOOPS", strconv.Itoa(loops)).
+		WithEnvVariable("FPS", strconv.Itoa(fps)).
 		WithExec([]string{"bash", "-ec", script})
 
 	return &Video{File: ctr.File("output.mp4")}
 }
 
-// Optimized a GIF using Gifsicle
+// Optimize a rendered GIF using Gifsicle
 //
 // Usage: dagger call render --sketch /tmp/sketch gif gifsicle --colors 32 file export --path output.gif
 func (g *Gif) Gifsicle(
@@ -170,7 +164,7 @@ func (g *Gif) Gifsicle(
 	return &Gif{
 		File: dag.Container().
 			From(processingImage).
-			WithFile("input.gif", g.File).
+			WithMountedFile("input.gif", g.File).
 			WithExec(args).
 			File("output.gif"),
 	}
