@@ -169,3 +169,7 @@ func (g *Gif) Gifsicle(
 			File("output.gif"),
 	}
 }
+
+func (r *Render) Frames() *dagger.Directory {
+	return r.Container.Directory("sketch")
+}
