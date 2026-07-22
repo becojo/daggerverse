@@ -36,6 +36,10 @@ void settings() {
         record = true;
     }
 
+    if(record && _periods == 0) {
+      _periods = 1;
+    }
+
     if (_periods > 0) {
       println("periods: ", _periods);
     }
@@ -295,4 +299,60 @@ float map3(float value, float start1, float stop1, float start2, float stop2, fl
     out = c/2 * (2 - pow(2 - t, p)) + b;
   }
   return out;
+}
+
+
+/**
+ * Draws a radial gradient using a triangle fan.
+ * @param cx The x-coordinate of the center of the gradient.
+ * @param cy The y-coordinate of the center of the gradient.
+ * @param radiusX The horizontal radius of the gradient.
+ * @param radiusY The vertical radius of the gradient.
+ * @param c The color at the center of the gradient.
+ * @param c2 The color at the edges of the gradient.
+ * @param steps The number of steps to create the gradient (higher values result in a smoother gradient).
+ */
+void ellipseGradient(float cx, float cy, float radiusX, float radiusY, color c, color c2, int steps) {
+  noStroke();
+  beginShape(TRIANGLE_FAN);
+
+  fill(c, 255);   // center: opaque color
+  vertex(cx, cy);
+
+  fill(c2);     // edge: fully transparent
+  for (int i = 0; i <= steps; i++) {
+    float a = TWO_PI * i / steps;
+    vertex(cx + cos(a) * radiusX, cy + sin(a) * radiusY);
+  }
+
+  endShape(CLOSE);
+}
+
+/**
+ * Draws an ellipse mask that allows only the area inside the ellipse to be visible
+ * up to the edges of the screen. Avoid translating before applying the mask.
+ * @param cx The x-coordinate of the center of the ellipse.
+ * @param cy The y-coordinate of the center of the ellipse.
+ * @param radiusX The horizontal radius of the ellipse.
+ * @param radiusY The vertical radius of the ellipse.
+ */
+void ellipseMask(float cx, float cy, float radiusX, float radiusY) {
+  int steps = 72;
+  beginShape();
+
+  // Outer screen-sized rectangle in translated coordinates.
+  vertex(-width, -height);
+  vertex( width, -height);
+  vertex( width,  height);
+  vertex(-width,  height);
+
+  // Circular hole so only inside the circle remains visible.
+  beginContour();
+  for (int i = steps; i >= 0; i--) {
+    float a = TWO_PI * i / steps;
+    vertex(cx + cos(a) * radiusX, cy + sin(a) * radiusY);
+  }
+  endContour();
+
+  endShape(CLOSE);
 }
